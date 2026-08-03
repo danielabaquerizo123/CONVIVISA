@@ -1,0 +1,500 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+// ==========================================
+// MÓDULO 1: GESTIÓN ADMINISTRATIVA Y CONTROL DE ACCESOS
+// ==========================================
+
+model User {
+  id           String        @id @default(uuid())
+  email        String        @unique
+  password     String
+  firstName    String
+  lastName     String
+  status       UserStatus    @default(ACTIVE)
+  roleId       String
+  role         Role          @relation(fields: [roleId], references: [id])
+  employee     Employee?
+  auditLogs    AuditLog[]
+  tokenVersion Int           @default(0)
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  // Relaciones de flujos de aprobación y movimientos
+  assignedAssets      AssetAssignment[]
+  requisitionsCreated PurchaseRequisition[] @relation("RequisitionCreator")
+  requisitionsApproved PurchaseRequisition[] @relation("RequisitionApprover")
+  receptionsPerformed Reception[]
+  stockMovements      StockMovement[]
+}
+
+enum UserStatus {
+  ACTIVE
+  INACTIVE
+  SUSPENDED
+}
+
+model Role {
+  id          String       @id @default(uuid())
+  name        String       @unique // ej. ADMIN, INGENIERO_RESIDENTE, FINANCIERO, DIRECTIVO
+  description String?
+  users       User[]
+  permissions Permission[] @relation("RolePermissions")
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
+}
+
+model Permission {
+  id          String   @id @default(uuid())
+  action      String   // ej. CREATE, READ, UPDATE, DELETE, ALL
+  module      String   // ej. ADMINISTRATIVO, PROYECTOS, COMPRAS, FINANCIERO, REPORTES
+  description String?
+  roles       Role[]   @relation("RolePermissions")
+
+  @@unique([action, module])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  action    String   // ej. CREATE_PROJECT, UPDATE_INVENTORY
+  details   String?  // JSON o texto descriptivo
+  ipAddress String?
+  createdAt DateTime @default(now())
+}
+
+model Employee {
+  id             String           @id @default(uuid())
+  firstName      String
+  lastName       String
+  documentId     String           @unique // DNI, RUT, etc.
+  email          String
+  phone          String
+  status         EmployeeStatus   @default(ACTIVE)
+  userId         String?          @unique
+  user           User?            @relation(fields: [userId], references: [id], onDelete: SetNull)
+  attendances    Attendance[]
+  projects       Project[]        @relation("ProjectEmployees")
+  residentOf     Project[]        @relation("ResidentProjects")
+  createdAt      DateTime         @default(now())
+  updatedAt      DateTime         @updatedAt
+}
+
+enum EmployeeStatus {
+  ACTIVE
+  INACTIVE
+  ON_LEAVE
+}
+
+model Attendance {
+  id         String    @id @default(uuid())
+  employeeId String
+  employee   Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  projectId  String
+  project    Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  checkIn    DateTime
+  checkOut   DateTime?
+  date       DateTime  // Solo la parte de fecha
+  createdAt  DateTime  @default(now())
+  updatedAt  DateTime  @updatedAt
+
+  @@index([employeeId, date])
+  @@index([projectId, date])
+}
+
+// ==========================================
+// MÓDULO 2: GESTIÓN OPERATIVA Y CONTROL DE PROYECTOS (CONSTRUCCIÓN)
+// ==========================================
+
+model Project {
+  id                 String               @id @default(uuid())
+  name               String
+  location           String
+  startDate          DateTime
+  endDate            DateTime?
+  estimatedBudget    Decimal              @db.Decimal(15, 2)
+  status             ProjectStatus        @default(PLANNING)
+  residentEngineerId String
+  residentEngineer   Employee             @relation("ResidentProjects", fields: [residentEngineerId], references: [id])
+  employees          Employee[]           @relation("ProjectEmployees")
+  tasks              Task[]
+  assetAssignments   AssetAssignment[]
+  warehouseStock     WarehouseStock[]
+  stockMovements     StockMovement[]
+  requisitions       PurchaseRequisition[]
+  budget             ProjectBudget?
+  costs              CostTransaction[]
+  receivables        AccountReceivable[]
+  attendances        Attendance[]
+  createdAt          DateTime             @default(now())
+  updatedAt          DateTime             @updatedAt
+}
+
+enum ProjectStatus {
+  PLANNING
+  IN_PROGRESS
+  ON_HOLD
+  COMPLETED
+  CANCELLED
+}
+
+model Task {
+  id             String          @id @default(uuid())
+  projectId      String
+  project        Project         @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  name           String
+  description    String?
+  phase          String          // ej. Cimentación, Obra Negra, Acabados
+  startDate      DateTime
+  endDate        DateTime?
+  progress       Float           @default(0.0) // 0 a 100
+  status         TaskStatus      @default(PENDING)
+  stockMovements StockMovement[]
+  createdAt      DateTime        @default(now())
+  updatedAt      DateTime        @updatedAt
+
+  @@index([projectId])
+}
+
+enum TaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model Asset {
+  id              String            @id @default(uuid())
+  name            String
+  code            String            @unique // Código de barras o serie
+  type            AssetType
+  status          AssetStatus       @default(AVAILABLE)
+  lastMaintenance DateTime?
+  assignments     AssetAssignment[]
+  createdAt       DateTime          @default(now())
+  updatedAt       DateTime          @updatedAt
+}
+
+enum AssetType {
+  MACHINERY
+  TOOL
+  VEHICLE
+}
+
+enum AssetStatus {
+  AVAILABLE
+  IN_USE
+  MAINTENANCE
+  RETIRED
+}
+
+model AssetAssignment {
+  id           String    @id @default(uuid())
+  assetId      String
+  asset        Asset     @relation(fields: [assetId], references: [id], onDelete: Cascade)
+  projectId    String
+  project      Project   @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  assignedById String
+  assignedBy   User      @relation(fields: [assignedById], references: [id])
+  assignedAt   DateTime  @default(now())
+  returnedAt   DateTime?
+  notes        String?
+  createdAt    DateTime  @default(now())
+
+  @@index([assetId])
+  @@index([projectId])
+}
+
+// ==========================================
+// MÓDULO 3: GESTIÓN COMPRAS Y PROVEEDORES (ABASTECIMIENTO)
+// ==========================================
+
+model Supplier {
+  id           String           @id @default(uuid())
+  name         String
+  taxId        String           @unique // RUC, NIT, RFC
+  email        String
+  phone        String
+  address      String
+  rating       Float            @default(5.0)
+  paymentTerms String           // ej. 30 días, 15 días, contado
+  orders       PurchaseOrder[]
+  payables     AccountPayable[]
+  createdAt    DateTime         @default(now())
+  updatedAt    DateTime         @updatedAt
+}
+
+model Material {
+  id              String               @id @default(uuid())
+  name            String
+  unit            String               // ej. m3, kg, unidades, bolsas
+  sku             String               @unique
+  unitPrice       Decimal              @db.Decimal(10, 2)
+  stocks          WarehouseStock[]
+  movements       StockMovement[]
+  requisitionItems RequisitionItem[]
+  orderItems      PurchaseOrderItem[]
+  receptionItems  ReceptionItem[]
+  createdAt       DateTime             @default(now())
+  updatedAt       DateTime             @updatedAt
+}
+
+model WarehouseStock {
+  id         String   @id @default(uuid())
+  projectId  String
+  project    Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  materialId String
+  material   Material @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  quantity   Float    @default(0.0)
+  minStock   Float    @default(0.0)
+  updatedAt  DateTime @updatedAt
+
+  @@unique([projectId, materialId])
+}
+
+model StockMovement {
+  id              String         @id @default(uuid())
+  projectId       String
+  project         Project        @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  materialId      String
+  material        Material       @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  quantity        Float
+  type            MovementType   // RECEIPT, CONSUMPTION, TRANSFER
+  performedById   String
+  performedBy     User           @relation(fields: [performedById], references: [id])
+  taskId          String?
+  task            Task?          @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  createdAt       DateTime       @default(now())
+
+  @@index([projectId])
+  @@index([materialId])
+  @@index([taskId])
+  @@index([purchaseOrderId])
+}
+
+enum MovementType {
+  RECEIPT
+  CONSUMPTION
+  TRANSFER
+}
+
+model PurchaseRequisition {
+  id            String            @id @default(uuid())
+  projectId     String
+  project       Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  requestedById String
+  requestedBy   User              @relation("RequisitionCreator", fields: [requestedById], references: [id])
+  status        RequisitionStatus @default(PENDING)
+  approvedById  String?
+  approvedBy    User?             @relation("RequisitionApprover", fields: [approvedById], references: [id])
+  items         RequisitionItem[]
+  orders        PurchaseOrder[]
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+
+  @@index([projectId])
+}
+
+enum RequisitionStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  ORDERED
+}
+
+model RequisitionItem {
+  id            String              @id @default(uuid())
+  requisitionId String
+  requisition   PurchaseRequisition @relation(fields: [requisitionId], references: [id], onDelete: Cascade)
+  materialId    String
+  material      Material            @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  quantity      Float
+
+  @@unique([requisitionId, materialId])
+}
+
+model PurchaseOrder {
+  id             String            @id @default(uuid())
+  requisitionId  String?
+  requisition    PurchaseRequisition? @relation(fields: [requisitionId], references: [id], onDelete: SetNull)
+  supplierId     String
+  supplier       Supplier          @relation(fields: [supplierId], references: [id])
+  status         OrderStatus       @default(DRAFT)
+  totalAmount    Decimal           @db.Decimal(15, 2)
+  items          PurchaseOrderItem[]
+  receptions     Reception[]
+  stockMovements StockMovement[]
+  payables       AccountPayable[]
+  createdAt      DateTime          @default(now())
+  updatedAt      DateTime          @updatedAt
+
+  @@index([supplierId])
+}
+
+enum OrderStatus {
+  DRAFT
+  SENT
+  PARTIALLY_RECEIVED
+  COMPLETED
+  CANCELLED
+}
+
+model PurchaseOrderItem {
+  id              String        @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  materialId      String
+  material        Material      @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  quantity        Float
+  unitPrice       Decimal       @db.Decimal(10, 2)
+
+  @@unique([purchaseOrderId, materialId])
+}
+
+model Reception {
+  id              String          @id @default(uuid())
+  purchaseOrderId String
+  purchaseOrder   PurchaseOrder   @relation(fields: [purchaseOrderId], references: [id], onDelete: Cascade)
+  receivedById    String
+  receivedBy      User            @relation(fields: [receivedById], references: [id])
+  receivedAt      DateTime        @default(now())
+  items           ReceptionItem[]
+
+  @@index([purchaseOrderId])
+}
+
+model ReceptionItem {
+  id               String          @id @default(uuid())
+  receptionId      String
+  reception        Reception       @relation(fields: [receptionId], references: [id], onDelete: Cascade)
+  materialId       String
+  material         Material        @relation(fields: [materialId], references: [id], onDelete: Cascade)
+  quantityReceived Float
+  status           ReceptionStatus @default(CONFORM)
+
+  @@index([receptionId])
+}
+
+enum ReceptionStatus {
+  CONFORM
+  DEFECTIVE
+  DISCREPANCY
+}
+
+// ==========================================
+// MÓDULO 4: GESTIÓN FINANCIERA Y CONTABLE
+// ==========================================
+
+model ProjectBudget {
+  id                  String   @id @default(uuid())
+  projectId           String   @unique
+  project             Project  @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  totalPlanned        Decimal  @db.Decimal(15, 2)
+  materialsPlanned    Decimal  @db.Decimal(15, 2)
+  laborPlanned        Decimal  @db.Decimal(15, 2)
+  subcontractsPlanned Decimal  @db.Decimal(15, 2)
+  equipmentPlanned    Decimal  @db.Decimal(15, 2)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model CostTransaction {
+  id          String       @id @default(uuid())
+  projectId   String
+  project     Project      @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  category    CostCategory
+  amount      Decimal      @db.Decimal(15, 2)
+  description String
+  date        DateTime
+  referenceId String?      // Enlace opcional a factura o nómina
+  createdAt   DateTime     @default(now())
+
+  @@index([projectId])
+}
+
+enum CostCategory {
+  MATERIAL
+  LABOR
+  SUBCONTRACT
+  EQUIPMENT
+}
+
+model AccountReceivable {
+  id            String           @id @default(uuid())
+  projectId     String
+  project       Project          @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  invoiceNumber String?
+  amount        Decimal          @db.Decimal(15, 2)
+  description   String
+  dueDate       DateTime
+  status        PaymentStatus    @default(PENDING)
+  paidAt        DateTime?
+  taxRecords    TaxRecord[]
+  createdAt     DateTime         @default(now())
+  updatedAt     DateTime         @updatedAt
+
+  @@index([projectId])
+}
+
+model AccountPayable {
+  id              String        @id @default(uuid())
+  purchaseOrderId String?
+  purchaseOrder   PurchaseOrder? @relation(fields: [purchaseOrderId], references: [id], onDelete: SetNull)
+  supplierId      String
+  supplier        Supplier      @relation(fields: [supplierId], references: [id])
+  invoiceNumber   String
+  amount          Decimal       @db.Decimal(15, 2)
+  dueDate         DateTime
+  status          PaymentStatus @default(PENDING)
+  paidAt          DateTime?
+  taxRecords      TaxRecord[]
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  @@index([supplierId])
+  @@index([purchaseOrderId])
+}
+
+enum PaymentStatus {
+  PENDING
+  PAID
+  OVERDUE
+}
+
+model TaxRecord {
+  id                  String             @id @default(uuid())
+  transactionType     TaxTransactionType
+  amount              Decimal            @db.Decimal(15, 2)
+  taxAmount           Decimal            @db.Decimal(15, 2)
+  taxRate             Float              // ej. 0.18 para el 18%
+  date                DateTime
+  receivableId        String?
+  receivable          AccountReceivable? @relation(fields: [receivableId], references: [id], onDelete: SetNull)
+  payableId           String?
+  payable             AccountPayable?    @relation(fields: [payableId], references: [id], onDelete: SetNull)
+  createdAt           DateTime           @default(now())
+
+  @@index([receivableId])
+  @@index([payableId])
+}
+
+enum TaxTransactionType {
+  INCOME
+  EXPENSE
+}
+
+model SystemConfig {
+  key   String @id
+  value String
+}
+

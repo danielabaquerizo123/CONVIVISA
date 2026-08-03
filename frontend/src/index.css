@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  body {
+    @apply bg-brand-bg text-brand-text font-sans antialiased min-h-screen;
+    background-color: #FAF7F2;
+    color: #2B2420;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-serif;
+    color: #2B2420;
+  }
+}
