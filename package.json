@@ -9,7 +9,7 @@
   "scripts": {
     "postinstall": "npm install --prefix backend && npm install --prefix frontend",
     "build:frontend": "npm run build --prefix frontend",
-    "build:backend": "npm run build --prefix backend",
+    "build:backend": "cd backend && npx prisma generate && npm run build",
     "build": "npm run build:frontend && npm run build:backend",
     "start": "node backend/dist/src/main.js",
     "start:prod": "npm run db:migrate:deploy --prefix backend && npm run start",
