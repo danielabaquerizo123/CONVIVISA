@@ -1,7 +1,7 @@
 import { PrismaClient } from "@prisma/client";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { Pool } from "pg";
-import * as bcrypt from "bcrypt";
+import * as bcrypt from "bcryptjs";
 
 // Configurar el cliente de Prisma 7 con el adaptador de pg
 const connectionString = process.env.DATABASE_URL;
