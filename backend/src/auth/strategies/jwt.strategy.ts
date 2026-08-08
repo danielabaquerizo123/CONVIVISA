@@ -11,8 +11,8 @@ export class JwtStrategy extends PassportStrategy(Strategy, 'jwt') {
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       // Ignorar expiración en falso para validar que no esté vencido
       ignoreExpiration: false,
-      // Usar la clave secreta de las variables de entorno, con un fallback seguro para evitar errores de tipado
-      secretOrKey: configService.get<string>('JWT_SECRET') || 'default_fallback_jwt_secret_key_12345',
+      // JWT_SECRET es obligatorio para que el backend no acepte tokens con una clave predecible.
+      secretOrKey: configService.getOrThrow<string>('JWT_SECRET'),
     });
   }
 

@@ -15,13 +15,17 @@ import { PermissionsGuard } from './guards/permissions.guard';
     JwtModule.registerAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
-      useFactory: (configService: ConfigService) => ({
-        secret: configService.get<string>('JWT_SECRET'),
-        signOptions: {
-          // Cast as any para evitar incompatibilidad de tipos en TypeScript con StringValue
-          expiresIn: configService.get<any>('JWT_EXPIRATION', '24h'),
-        },
-      }),
+      useFactory: (configService: ConfigService) => {
+        const secret = configService.getOrThrow<string>('JWT_SECRET');
+
+        return {
+          secret,
+          signOptions: {
+            // Cast as any para evitar incompatibilidad de tipos en TypeScript con StringValue
+            expiresIn: configService.get<any>('JWT_EXPIRATION', '24h'),
+          },
+        };
+      },
     }),
   ],
   controllers: [AuthController],
