@@ -28,9 +28,49 @@ interface AuthContextType {
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
 
+const AUTH_TOKEN_KEY = 'consvivisa_auth_token';
+const AUTH_USER_KEY = 'consvivisa_auth_user';
+
+const isValidUser = (value: unknown): value is User => {
+  if (!value || typeof value !== 'object') return false;
+
+  const candidate = value as Partial<User>;
+  return (
+    typeof candidate.id === 'string' &&
+    typeof candidate.email === 'string' &&
+    typeof candidate.firstName === 'string' &&
+    typeof candidate.lastName === 'string' &&
+    typeof candidate.role === 'string' &&
+    Array.isArray(candidate.permissions)
+  );
+};
+
+const getStoredSession = (): { token: string | null; user: User | null } => {
+  const storedToken = localStorage.getItem(AUTH_TOKEN_KEY);
+  const storedUser = localStorage.getItem(AUTH_USER_KEY);
+
+  if (!storedToken || !storedUser) {
+    return { token: null, user: null };
+  }
+
+  try {
+    const parsedUser = JSON.parse(storedUser);
+    if (isValidUser(parsedUser)) {
+      return { token: storedToken, user: parsedUser };
+    }
+  } catch {
+    // Sesión corrupta: se limpia abajo para evitar un estado autenticado parcial.
+  }
+
+  localStorage.removeItem(AUTH_TOKEN_KEY);
+  localStorage.removeItem(AUTH_USER_KEY);
+  return { token: null, user: null };
+};
+
 export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) => {
-  const [token, setToken] = useState<string | null>(null);
-  const [user, setUser] = useState<User | null>(null);
+  const [storedSession] = useState(getStoredSession);
+  const [token, setToken] = useState<string | null>(storedSession.token);
+  const [user, setUser] = useState<User | null>(storedSession.user);
   const [loading, setLoading] = useState<boolean>(false);
   const [error, setError] = useState<string | null>(null);
 
@@ -52,6 +92,12 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       }
 
       const data = await response.json();
+      if (typeof data.token !== 'string' || !isValidUser(data.user)) {
+        throw new Error('Respuesta de autenticación inválida.');
+      }
+
+      localStorage.setItem(AUTH_TOKEN_KEY, data.token);
+      localStorage.setItem(AUTH_USER_KEY, JSON.stringify(data.user));
       setToken(data.token);
       setUser(data.user);
     } catch (err: any) {
@@ -63,13 +109,15 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
   };
 
   const logout = () => {
+    localStorage.removeItem(AUTH_TOKEN_KEY);
+    localStorage.removeItem(AUTH_USER_KEY);
     setToken(null);
     setUser(null);
     setError(null);
   };
 
   const hasPermission = (action: string, module: string): boolean => {
-    if (!user) return false;
+    if (!user || !Array.isArray(user.permissions)) return false;
 
     // Buscar si posee el permiso requerido o el comodín ALL en el módulo respectivo
     return user.permissions.some(
@@ -82,7 +130,7 @@ export const AuthProvider: React.FC<{ children: ReactNode }> = ({ children }) =>
       value={{
         token,
         user,
-        isAuthenticated: !!token,
+        isAuthenticated: Boolean(token && user),
         login,
         logout,
         hasPermission,

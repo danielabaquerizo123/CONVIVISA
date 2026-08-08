@@ -23,6 +23,7 @@ interface AppShellProps {
 export const AppShell: React.FC<AppShellProps> = ({ activeTab, setActiveTab }) => {
   const { user, logout, hasPermission } = useAuth();
   const [selectedProjectId, setSelectedProjectId] = React.useState<string | null>(null);
+  const userInitials = `${user?.firstName?.charAt(0) ?? ''}${user?.lastName?.charAt(0) ?? ''}`;
 
   // Al cambiar de pestaña principal, resetear el proyecto seleccionado para volver al listado
   React.useEffect(() => {
@@ -84,7 +85,7 @@ export const AppShell: React.FC<AppShellProps> = ({ activeTab, setActiveTab }) =
         <div className="p-4 border-t border-white/10 space-y-3">
           <div className="flex items-center gap-3 px-2 py-1">
             <div className="w-9 h-9 rounded-full bg-brand-primary/20 border border-brand-primary/30 flex items-center justify-center text-brand-primary font-bold shrink-0">
-              {user?.firstName.charAt(0)}{user?.lastName.charAt(0)}
+              {userInitials}
             </div>
             <div className="overflow-hidden text-left">
               <p className="text-xs font-bold text-white truncate font-sans">
