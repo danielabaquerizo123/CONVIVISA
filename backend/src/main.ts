@@ -19,7 +19,15 @@ async function bootstrap() {
   );
 
   // Habilitar CORS
-  app.enableCors();
+  // Por defecto se permite cualquier origen (comportamiento previo).
+  // En producción se puede restringir con CORS_ORIGIN (lista separada por comas).
+  const allowedOrigins = process.env.CORS_ORIGIN
+    ? process.env.CORS_ORIGIN.split(',').map((origin) => origin.trim())
+    : undefined;
+
+  app.enableCors({
+    origin: allowedOrigins ?? '*',
+  });
 
   // Escuchar en el puerto de Railway (process.env.PORT) o el 3000 local
   const port = process.env.PORT || 3000;

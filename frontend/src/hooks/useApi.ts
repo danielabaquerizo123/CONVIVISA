@@ -1,4 +1,5 @@
 import { useAuth } from '../context/AuthContext';
+import { apiUrl } from '../lib/api';
 
 export const useApi = () => {
   const { token, logout } = useAuth();
@@ -10,7 +11,7 @@ export const useApi = () => {
       ...options.headers,
     };
 
-    const response = await fetch(path, { ...options, headers });
+    const response = await fetch(apiUrl(path), { ...options, headers });
 
     if (response.status === 401) {
       logout();
